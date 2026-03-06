@@ -1,1 +1,633 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RACE BOX PRO MAX+</title>
 
+<style>
+
+body{
+margin:0;
+font-family:Arial;
+background:#111; 
+color:white;
+text-align:center;
+}
+
+.header{
+padding:20px;
+font-size:28px;
+font-weight:bold;
+color:#00ff9c;
+}
+
+.container{
+padding:20px;
+max-width:700px;
+margin:auto;
+}
+
+.timer{
+font-size:60px;
+font-weight:bold;
+margin:20px 0;
+color:#00ff9c;
+}
+
+.status{
+font-size:14px;
+color:#aaa;
+margin-bottom:10px;
+}
+
+.speedContainer{
+display:flex;
+justify-content:center;
+gap:30px;
+margin:20px 0;
+flex-wrap:wrap;
+}
+
+.speedometer{
+position:relative;
+width:200px;
+height:200px;
+}
+
+.speedometer svg{
+transform:rotate(-90deg);
+}
+
+.speed-text{
+position:absolute;
+top:50%;
+left:50%;
+transform:translate(-50%,-50%);
+font-size:20px;
+font-weight:bold;
+color:#00ff9c;
+}
+
+.speed-text span{
+font-size:32px;
+}
+
+.panel{
+display:grid;
+grid-template-columns:repeat(5,1fr);
+gap:10px;
+margin-top:20px;
+}
+
+.card{
+background:#222;
+padding:15px;
+border-radius:10px;
+}
+
+.card span{
+font-size:22px;
+color:#00ff9c;
+}
+
+.buttons{
+margin-top:20px;
+}
+
+button{
+font-size:16px;
+padding:12px 20px;
+margin:6px;
+border:none;
+border-radius:8px;
+cursor:pointer;
+font-weight:bold;
+}
+
+.start{background:#00ff9c;color:black;}
+.reset{background:#ff3b3b;color:white;}
+.historybtn{background:#2b7cff;color:white;}
+.stop{background:#ff9900;color:black;}
+
+#history{
+margin-top:20px;
+text-align:left;
+}
+
+.historyCard{
+background:#222;
+padding:10px;
+border-radius:8px;
+margin:6px 0;
+}
+
+.chart-container{
+margin-top:30px;
+}
+
+canvas{
+background:#222;
+border-radius:10px;
+}
+
+.footer{
+margin-top:20px;
+font-size:14px;
+color:#777;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="header">RACE BOX PRO MAX+</div>
+
+<div class="container">
+
+<div class="status" id="gpsStatus">
+GPS: waiting...
+</div>
+
+<div class="timer" id="timer">0.000</div>
+
+<div class="speedContainer">
+
+<div class="speedometer">
+<svg width="200" height="200">
+<circle cx="100" cy="100" r="90" stroke="#444" stroke-width="15" fill="none"/>
+<circle id="speedArc" cx="100" cy="100" r="90"
+stroke="#00ff9c" stroke-width="15"
+fill="none"
+stroke-dasharray="565"
+stroke-dashoffset="565"
+stroke-linecap="round"/>
+</svg>
+
+<div class="speed-text">
+Speed<br><span id="speed">0</span> km/h
+</div>
+</div>
+
+<div class="speedometer">
+<svg width="200" height="200">
+<circle cx="100" cy="100" r="90" stroke="#444" stroke-width="15" fill="none"/>
+<circle id="topArc" cx="100" cy="100" r="90"
+stroke="#00ff9c" stroke-width="15"
+fill="none"
+stroke-dasharray="565"
+stroke-dashoffset="565"
+stroke-linecap="round"/>
+</svg>
+
+<div class="speed-text">
+Top Speed<br><span id="topspeed">0</span> km/h
+</div>
+</div>
+
+</div>
+
+<div class="panel">
+
+<div class="card">
+0-60<br>
+<span id="zero60">-</span>s
+</div>
+
+<div class="card">
+60m<br>
+<span id="m60">-</span>s
+</div>
+
+<div class="card">
+201m<br>
+<span id="m201">-</span>s
+</div>
+
+<div class="card">
+401m<br>
+<span id="m401">-</span>s
+</div>
+
+<div class="card">
+501m<br>
+<span id="m501">-</span>s
+</div>
+
+</div>
+
+<div class="buttons">
+<button class="start" onclick="startRace()">START</button>
+<button class="reset" onclick="resetRace()">RESET</button>
+<button class="historybtn" onclick="showHistory()">HISTORY</button>
+<button class="stop" onclick="stopRace()">STOP</button>
+<button onclick="clearHistory()">CLEAR HISTORY</button>
+<button onclick="exportHistory()">EXPORT</button>
+</div>
+
+<div id="history"></div>
+
+<div class="chart-container">
+<canvas id="speedChart" height="150"></canvas>
+<canvas id="distanceChart" height="150"></canvas>
+</div>
+
+<div class="footer">
+JavaTech Racing Technology
+</div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+
+let watchID
+let startTime
+let startPos
+
+let raceStarted=false
+let riderName=""
+
+let topSpeed=0
+let lastSpeed=0
+
+let zero60done=false
+let m60done=false
+let m201done=false
+let m401done=false
+let m501done=false
+
+let t60=0
+let t201=0
+let t401=0
+let t501=0
+
+let timeData=[]
+let speedData=[]
+let distanceData=[]
+
+let lastChartUpdate=0
+
+const speedChart=new Chart(
+document.getElementById('speedChart'),
+{
+type:'line',
+data:{labels:[],datasets:[{
+label:'Speed',
+data:[],
+borderColor:'#00ff9c',
+tension:0.3
+}]},
+options:{animation:false,responsive:true}
+})
+
+const distanceChart=new Chart(
+document.getElementById('distanceChart'),
+{
+type:'line',
+data:{labels:[],datasets:[{
+label:'Distance',
+data:[],
+borderColor:'#ff9900',
+tension:0.3
+}]},
+options:{animation:false,responsive:true}
+})
+
+function resetCharts(){
+
+timeData=[]
+speedData=[]
+distanceData=[]
+
+speedChart.data.labels=[]
+speedChart.data.datasets[0].data=[]
+speedChart.update()
+
+distanceChart.data.labels=[]
+distanceChart.data.datasets[0].data=[]
+distanceChart.update()
+
+}
+
+function startRace(){
+
+resetVariables()
+resetCharts()
+
+riderName=prompt("Masukkan Nama Rider")
+
+if(!riderName){
+alert("Nama rider wajib diisi")
+return
+}
+
+navigator.geolocation.getCurrentPosition(pos=>{
+
+startPos=pos.coords
+
+watchID=navigator.geolocation.watchPosition(updateRace,error,{
+enableHighAccuracy:true,
+maximumAge:0,
+timeout:10000
+})
+
+})
+
+}
+
+function resetVariables(){
+
+topSpeed=0
+lastSpeed=0
+raceStarted=false
+
+zero60done=false
+m60done=false
+m201done=false
+m401done=false
+m501done=false
+
+t60=0
+t201=0
+t401=0
+t501=0
+
+}
+
+function updateRace(pos){
+
+let accuracy=pos.coords.accuracy||999
+
+if(accuracy>20){
+
+document.getElementById("gpsStatus").innerText=
+"GPS lemah "+accuracy.toFixed(1)+"m"
+
+return
+
+}
+
+document.getElementById("gpsStatus").innerText=
+"GPS akurat "+accuracy.toFixed(1)+"m"
+
+let gpsSpeed=(pos.coords.speed||0)*3.6
+let speed=(gpsSpeed*0.5)+(lastSpeed*0.5)
+lastSpeed=speed
+
+if(speed<1)speed=0
+
+document.getElementById("speed").innerText=speed.toFixed(1)
+
+updateSpeedometer(speed)
+
+if(speed>topSpeed){
+
+topSpeed=speed
+document.getElementById("topspeed").innerText=topSpeed.toFixed(1)
+updateTopSpeed(topSpeed)
+
+}
+
+let distance=getDistance(
+startPos.latitude,
+startPos.longitude,
+pos.coords.latitude,
+pos.coords.longitude
+)
+
+if(speed>7 && distance>5 && raceStarted==false){
+
+raceStarted=true
+startTime=Date.now()
+
+document.getElementById("gpsStatus").innerText="Race Started"
+
+}
+
+if(!raceStarted)return
+
+let time=(Date.now()-startTime)/1000
+
+document.getElementById("timer").innerText=time.toFixed(3)
+
+if(speed>=60 && !zero60done){
+
+zero60done=true
+document.getElementById("zero60").innerText=time.toFixed(3)
+
+}
+
+if(distance>=60 && !m60done){
+
+m60done=true
+t60=time
+document.getElementById("m60").innerText=time.toFixed(3)
+
+}
+
+if(distance>=201 && !m201done){
+
+m201done=true
+t201=time
+document.getElementById("m201").innerText=time.toFixed(3)
+
+}
+
+if(distance>=401 && !m401done){
+
+m401done=true
+t401=time
+document.getElementById("m401").innerText=time.toFixed(3)
+
+}
+
+if(distance>=501 && !m501done){
+
+m501done=true
+t501=time
+document.getElementById("m501").innerText=time.toFixed(3)
+
+saveHistory()
+showHistory()
+stopRace()
+
+}
+
+let now=Date.now()
+
+if(now-lastChartUpdate>500){
+
+timeData.push(time.toFixed(2))
+speedData.push(speed.toFixed(1))
+distanceData.push(distance.toFixed(1))
+
+if(timeData.length>120){
+timeData.shift()
+speedData.shift()
+distanceData.shift()
+}
+
+speedChart.data.labels=timeData
+speedChart.data.datasets[0].data=speedData
+speedChart.update()
+
+distanceChart.data.labels=timeData
+distanceChart.data.datasets[0].data=distanceData
+distanceChart.update()
+
+lastChartUpdate=now
+
+}
+
+}
+
+function stopRace(){
+
+navigator.geolocation.clearWatch(watchID)
+raceStarted=false
+document.getElementById("gpsStatus").innerText="Race stopped"
+
+}
+
+function updateSpeedometer(speed){
+
+let max=200
+let percent=Math.min(speed/max,1)
+
+document.getElementById("speedArc")
+.style.strokeDashoffset=565-(565*percent)
+
+}
+
+function updateTopSpeed(speed){
+
+let max=200
+let percent=Math.min(speed/max,1)
+
+document.getElementById("topArc")
+.style.strokeDashoffset=565-(565*percent)
+
+}
+
+function saveHistory(){
+
+let history=JSON.parse(localStorage.getItem("raceHistory"))||[]
+
+let data={
+name:riderName,
+top:topSpeed.toFixed(1),
+t60:t60? t60.toFixed(3):"-",
+t201:t201? t201.toFixed(3):"-",
+t401:t401? t401.toFixed(3):"-",
+t501:t501? t501.toFixed(3):"-",
+date:new Date().toLocaleString()
+}
+
+history.push(data)
+
+localStorage.setItem("raceHistory",JSON.stringify(history))
+
+}
+
+function showHistory(){
+
+let history=JSON.parse(localStorage.getItem("raceHistory"))||[]
+
+if(history.length==0){
+document.getElementById("history").innerHTML="<h2>History kosong</h2>"
+return
+}
+
+let list=[...history].reverse()
+
+let text="<h2>History</h2>"
+
+list.forEach((h,i)=>{
+
+text+=`
+<div class="historyCard">
+Run ${list.length-i} - ${h.name}<br>
+Date: ${h.date}<br>
+Top Speed: ${h.top} km/h<br>
+60m: ${h.t60} s<br>
+201m: ${h.t201} s<br>
+401m: ${h.t401} s<br>
+501m: ${h.t501} s
+</div>
+`
+
+})
+
+document.getElementById("history").innerHTML=text
+
+}
+
+function clearHistory(){
+
+if(confirm("Hapus semua history?")){
+
+localStorage.removeItem("raceHistory")
+document.getElementById("history").innerHTML="History kosong"
+
+}
+
+}
+
+function exportHistory(){
+
+let data=localStorage.getItem("raceHistory")
+
+if(!data){
+alert("Tidak ada history")
+return
+}
+
+let blob=new Blob([data],{type:"application/json"})
+let a=document.createElement("a")
+
+a.href=URL.createObjectURL(blob)
+a.download="race_history.json"
+a.click()
+
+}
+
+function resetRace(){
+
+navigator.geolocation.clearWatch(watchID)
+location.reload()
+
+}
+
+function getDistance(lat1,lon1,lat2,lon2){
+
+let R=6371000
+
+let dLat=(lat2-lat1)*Math.PI/180
+let dLon=(lon2-lon1)*Math.PI/180
+
+let a=Math.sin(dLat/2)**2+
+Math.cos(lat1*Math.PI/180)*
+Math.cos(lat2*Math.PI/180)*
+Math.sin(dLon/2)**2
+
+let c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))
+
+return R*c
+
+}
+
+function error(){
+alert("GPS error")
+}
+
+window.onload=function(){
+showHistory()
+}
+
+</script>
+
+</body>
+</html>
